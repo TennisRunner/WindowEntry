@@ -1,0 +1,319 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Text;
+using System.Xml.XPath;
+
+namespace TennisRunner
+{
+    using static Win32APIs;
+
+    class WindowEntry
+    {
+        public IntPtr hwnd;
+
+
+        public bool isVisible
+        {
+            get
+            {
+                return IsWindowVisible(this.hwnd);
+            }
+        }
+
+        public bool isTopLevelWindow
+        {
+            get
+            {
+                return this.hwnd != GetAncestor(this.hwnd, GetAncestorFlags.GetRoot);
+            }
+        }
+
+
+
+        public string className
+        {
+            get
+            {
+                StringBuilder builder = new StringBuilder(1024);
+
+                GetClassName(this.hwnd, builder, builder.Capacity);
+
+                return builder.ToString();
+            }
+        }
+
+        public string title
+        {
+            get
+            {
+                StringBuilder builder = new StringBuilder(1025);
+
+                GetWindowText(this.hwnd, builder, builder.Capacity);
+                return builder.ToString();
+            }
+
+            set
+            {
+                SetWindowText(this.hwnd, value);
+            }
+        }
+
+        public uint processId
+        {
+            get
+            {
+                uint result = 0;
+
+                GetWindowThreadProcessId(this.hwnd, out result);
+
+                return result;
+            }
+        }
+
+
+        public IntPtr style
+        {
+            get
+            {
+                return GetWindowLongPtr(this.hwnd, GetWindowLongFlags.GWL_STYLE);
+            }
+
+            set
+            {
+                SetWindowLongPtr(this.hwnd, GetWindowLongFlags.GWL_STYLE, value);
+            }
+        }
+
+
+        public RECT windowRect
+        {
+            get
+            {
+                RECT res = new RECT();
+                GetWindowRect(this.hwnd, out res);
+
+                return res;
+            }
+        }
+
+        public RECT clientRect
+        {
+            get
+            {
+                RECT res = new RECT();
+                GetClientRect(this.hwnd, out res);
+
+                return res;
+            }
+        }
+
+        public POINT clientScreenPosition
+        {
+            get
+            {
+                var p = new POINT(0, 0);
+
+                ClientToScreen(this.hwnd, ref p);
+
+                return p;
+            }
+        }
+
+        public RECT relativeWindowRect
+        {
+            get
+            {
+                RECT res = new RECT();
+
+                GetWindowRect(this.hwnd, out res);
+
+                var parent = this.parent;
+
+                if (parent != null)
+                {
+                    if (this.isTopLevelWindow == true)
+                    {
+                        POINT pt = new POINT(windowRect.X, windowRect.Y);
+
+                        ScreenToClient(parent.hwnd, ref pt);
+
+                        res.X = pt.X;
+                        res.Y = pt.Y;
+                    }
+                }
+
+                return res;
+            }
+        }
+
+
+
+        public WindowEntry next
+        {
+            get
+            {
+                WindowEntry ent = null;
+
+                IntPtr tempHwnd = GetWindow(this.hwnd, GetWindowType.GW_HWNDNEXT);
+
+                if (tempHwnd != IntPtr.Zero)
+                    ent = new WindowEntry(tempHwnd);
+
+                return ent;
+            }
+        }
+
+        public WindowEntry prev
+        {
+            get
+            {
+                WindowEntry ent = null;
+
+                IntPtr tempHwnd = GetWindow(this.hwnd, GetWindowType.GW_HWNDPREV);
+
+                if (tempHwnd != IntPtr.Zero)
+                    ent = new WindowEntry(tempHwnd);
+
+                return ent;
+            }
+        }
+
+        public WindowEntry firstChild
+        {
+            get
+            {
+                WindowEntry ent = null;
+
+                IntPtr tempHwnd = GetWindow(this.hwnd, GetWindowType.GW_CHILD);
+
+                if (tempHwnd != IntPtr.Zero)
+                    ent = new WindowEntry(tempHwnd);
+
+                return ent;
+            }
+        }
+
+        public WindowEntry parent
+        {
+            get
+            {
+                WindowEntry ent = null;
+
+                IntPtr tempParent = GetParent(this.hwnd);
+
+                if (tempParent != IntPtr.Zero)
+                    ent = new WindowEntry(tempParent);
+
+                return ent;
+            }
+        }
+
+
+        public static WindowEntry desktop
+        {
+            get
+            {
+                IntPtr temp = GetDesktopWindow();
+
+                WindowEntry ent = null;
+
+                if (temp != null)
+                    ent = new WindowEntry(temp);
+
+                return ent;
+            }
+        }
+
+        public static WindowEntry foregroundWindow
+        {
+            get
+            {
+                return new WindowEntry(GetForegroundWindow());
+            }
+
+            set
+            {
+                SetForegroundWindow(value.hwnd);
+            }
+        }
+
+
+        public List<WindowEntry> children
+        {
+            get
+            {
+                List<WindowEntry> res = new List<WindowEntry>();
+
+                WindowEntry ent = this.firstChild;
+
+                while (ent != null)
+                {
+                    res.Add(ent);
+                    ent = ent.next;
+                }
+
+                return res;
+            }
+        }
+
+        public List<WindowEntry> allChildren
+        {
+            get
+            {
+                List<WindowEntry> res = new List<WindowEntry>();
+
+                EnumChildWindows(this.hwnd, (hwnd2, lpvoid) =>
+                {
+                    res.Add(new WindowEntry(hwnd2));
+
+                    return true;
+                }, IntPtr.Zero);
+
+                return res;
+            }
+        }
+
+        public List<WindowEntry> allParents
+        {
+            get
+            {
+                List<WindowEntry> res = new List<WindowEntry>();
+
+                var hwnd = this.hwnd;
+
+                while (true)
+                {
+                    var parent = GetParent(hwnd);
+
+                    if (parent == IntPtr.Zero)
+                        break;
+
+                    res.Add(new WindowEntry(parent));
+
+                    hwnd = parent;
+                }
+
+                return res;
+            }
+        }
+
+
+        public WindowEntry(IntPtr hwnd)
+        {
+            this.hwnd = hwnd;
+        }
+
+        public WindowEntry findWindow(string className = null, string title = null, IntPtr? childAfter = null)
+        {
+            WindowEntry ent = null;
+
+            IntPtr temp = FindWindowEx(this.hwnd, childAfter.GetValueOrDefault(IntPtr.Zero), className, title);
+
+            if (temp != null)
+                ent = new WindowEntry(temp);
+
+            return ent;
+        }
+    }
+}
