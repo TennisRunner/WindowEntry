@@ -16,7 +16,10 @@ var steamProcessId = WindowEntry
 Console.WriteLine($"Steam process id: {steamProcessId}");
 
 
-var firefoxWindowLocation = WindowEntry.desktop.findWindow(className: "MozillaWindowClass").windowRect;
+var firefoxWindowLocation = WindowEntry
+							.desktop
+							.findWindow(className: "MozillaWindowClass")
+							.windowRect;
 
 Console.WriteLine(firefoxWindowLocation.ToString());
 ```
